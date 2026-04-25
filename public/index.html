@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MapMyLeads — Google Maps Lead Scraper</title>
+  <meta name="description" content="MapMyLeads: Scrape Google Maps business leads, store them in Airtable, and manage your outreach pipeline.">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --surface2: #1a1a1a;
+      --border: rgba(255,255,255,0.07);
+      --border2: rgba(255,255,255,0.12);
+      --accent: #f5a623;
+      --accent-dim: rgba(245,166,35,0.12);
+      --text: #e4e4e4;
+      --muted: #888;
+      --green: #2ecc71;
+      --green-bg: rgba(46,204,113,0.1);
+      --amber: #f39c12;
+      --amber-bg: rgba(243,156,18,0.1);
+      --red: #e74c3c;
+      --red-bg: rgba(231,76,60,0.1);
+      --grey: #666;
+      --grey-bg: rgba(100,100,100,0.1);
+      --nav-w: 260px;
+      --radius: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    body { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 99px; }
+
+    /* ══════════════════════════════ SIDEBAR ══════════════════════════════ */
+    .sidebar {
+      width: var(--nav-w);
+      min-width: var(--nav-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      z-index: 10;
+    }
+
+    .brand {
+      padding: 22px 20px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-icon { font-size: 20px; }
+
+    .new-btn {
+      margin: 14px 16px 6px;
+      padding: 10px 16px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(245,166,35,0.3);
+      color: var(--accent);
+      cursor: pointer;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      font-family: inherit;
+      width: calc(100% - 32px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .new-btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    .nav-section { padding: 6px 0; }
+    .nav-label { padding: 8px 20px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      color: var(--muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      text-align: left;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      width: 100%;
+      border-right: 2px solid transparent;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--surface2); }
+    .nav-btn.active { color: var(--accent); background: var(--accent-dim); border-right-color: var(--accent); }
+    .nav-icon { font-size: 16px; width: 18px; text-align: center; flex-shrink: 0; }
+
+    .sessions-list {
+      flex: 1;
+      overflow-y: auto;
+      border-top: 1px solid var(--border);
+      padding: 8px 0;
+    }
+    .sessions-group-label {
+      padding: 8px 20px 4px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .session-item {
+      padding: 9px 20px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .session-item:hover { background: var(--surface2); color: var(--text); }
+    .session-item.active-session { color: var(--accent); }
+    .session-emoji { font-size: 14px; flex-shrink: 0; }
+
+    .sidebar-bottom { border-top: 1px solid var(--border); padding: 6px 0; }
+
+    /* ══════════════════════════════ MAIN ══════════════════════════════ */
+    .main { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; }
+
+    .page { display: none; padding: 40px 44px; overflow-y: auto; flex: 1; animation: pageIn 0.25s ease; }
+    .page.active { display: flex; flex-direction: column; }
+    @keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 26px; font-weight: 700; line-height: 1.2; }
+    .page-header p { color: var(--muted); font-size: 14px; margin-top: 5px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      animation: fadeUp 0.35s ease both;
+    }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.10s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+    .card:nth-child(4) { animation-delay: 0.20s; }
+
+    .card-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+
+    /* ══════════════════════════════ HOME PAGE ══════════════════════════════ */
+    #page-home { padding-bottom: 120px; }
+
+    .greeting { font-size: 28px; font-weight: 700; margin-bottom: 28px; }
+    .greeting span { color: var(--accent); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .stats-grid .card-wide { grid-column: 1 / -1; }
+
+    .big-num { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -2px; color: var(--accent); }
+
+    .sentiment-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .sentiment-row:last-child { margin-bottom: 0; }
+    .s-label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .s-count { font-weight: 600; font-size: 14px; }
+
+    .bar-wrap { margin-bottom: 14px; }
+    .bar-wrap:last-child { margin-bottom: 0; }
+    .bar-meta { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+    .bar-meta span:first-child { color: var(--text); font-weight: 500; }
+    .bar-meta span:last-child { color: var(--muted); }
+    .bar-track { width: 100%; background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+    .bar-fill { background: var(--accent); height: 100%; border-radius: 4px; width: 0%; transition: width 1.2s cubic-bezier(.4,0,.2,1); }
+
+    /* Chat input */
+    .chat-input-area {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 20px 44px 28px;
+      background: linear-gradient(to top, var(--bg) 70%, transparent);
+      pointer-events: none;
+    }
+    .chat-form { pointer-events: all; display: flex; gap: 10px; align-items: center; }
+    .chat-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: #fff;
+      padding: 15px 22px;
+      border-radius: 50px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+    .chat-input::placeholder { color: var(--muted); }
+    .chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.12); }
+    .chat-send {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      transition: transform 0.15s, opacity 0.15s;
+      color: #000;
+    }
+    .chat-send:hover { transform: scale(1.05); }
+    .chat-send:active { transform: scale(0.95); }
+
+    /* ══════════════════════════════ HISTORY PAGE ══════════════════════════════ */
+    #page-history { gap: 20px; }
+
+    .history-empty {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+      color: var(--muted);
+    }
+    .history-empty-icon { font-size: 48px; }
+
+    .history-group { margin-bottom: 28px; }
+    .history-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+
+    .history-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .history-card:hover { border-color: var(--border2); background: var(--surface2); }
+    .history-card.selected { border-color: var(--accent); }
+
+    .history-emoji { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+    .history-info { flex: 1; min-width: 0; }
+    .history-title { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px; }
+    .history-preview { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .history-badge {
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Chat thread (session view) */
+    .chat-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(560px, 50vw);
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 50;
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+    }
+    .chat-panel.open { transform: translateX(0); }
+    .chat-panel-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-panel-title { flex: 1; font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chat-panel-close {
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.15s;
+    }
+    .chat-panel-close:hover { color: var(--text); }
+    .chat-panel-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    .msg-user {
+      align-self: flex-end;
+      background: var(--accent-dim);
+      border: 1px solid rgba(245,166,35,0.2);
+      color: var(--accent);
+      padding: 12px 16px;
+      border-radius: 12px 12px 3px 12px;
+      font-size: 15px;
+      font-weight: 500;
+      max-width: 90%;
+    }
+    .msg-bot {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 12px 12px 12px 3px;
+      max-width: 100%;
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .msg-bot p { margin-bottom: 8px; }
+    .msg-bot p:last-child { margin-bottom: 0; }
+
+    .loading-dots { display: inline-flex; gap: 4px; align-items: center; }
+    .loading-dots span {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: bounce 1.2s infinite;
+    }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,80%,100% { transform: scale(0.6); opacity:0.5; } 40% { transform: scale(1); opacity:1; } }
+
+    .preview-card { border: 1px solid var(--border); border-radius: 10px; margin-top: 12px; overflow: hidden; }
+    .preview-item {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .preview-item:last-child { border-bottom: none; }
+    .preview-name { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .preview-rating { color: var(--muted); font-size: 12px; }
+
+    /* ══════════════════════════════ DATABASE PAGE ══════════════════════════════ */
+    #page-database { padding-bottom: 20px; }
+
+    .db-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .db-search {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      width: 260px;
+      transition: border-color 0.15s;
+    }
+    .db-search::placeholder { color: var(--muted); }
+    .db-search:focus { border-color: var(--accent); }
+
+    .filter-btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .filter-btn:hover { border-color: var(--border2); color: var(--text); }
+    .filter-btn.active-positive { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+    .filter-btn.active-neutral  { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
+    .filter-btn.active-negative { background: var(--red-bg);   border-color: var(--red);   color: var(--red); }
+
+    .db-count { margin-left: auto; font-size: 13px; color: var(--muted); }
+    .refresh-btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .table-wrap { overflow-x: auto; flex: 1; }
+    table { width: 100%; border-collapse: collapse; font-family: 'Fira Code', monospace; font-size: 12.5px; }
+    thead { position: sticky; top: 0; background: var(--bg); z-index: 1; }
+    th {
+      padding: 12px 10px;
+      text-align: left;
+      color: var(--muted);
+      font-weight: 400;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    th:hover { color: var(--text); }
+    th.sorted { color: var(--accent); }
+    td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    tr:hover td { background: var(--surface); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 11.5px;
+      font-weight: 600;
+      white-space: nowrap;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .b-green  { background: var(--green-bg);  color: var(--green); }
+    .b-amber  { background: var(--amber-bg);  color: var(--amber); }
+    .b-red    { background: var(--red-bg);    color: var(--red); }
+    .b-grey   { background: var(--grey-bg);   color: var(--grey); }
+    .b-blue   { background: rgba(52,152,219,0.1); color: #5dade2; }
+
+    .notes-input {
+      background: transparent;
+      border: 1px dashed transparent;
+      color: var(--text);
+      padding: 6px 8px;
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      width: 180px;
+      border-radius: 4px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .notes-input:hover { border-color: var(--border2); }
+    .notes-input:focus { border-color: var(--accent); background: var(--surface2); }
+
+    .empty-table { padding: 48px; text-align: center; color: var(--muted); }
+    .empty-table-icon { font-size: 40px; margin-bottom: 12px; }
+
+    /* ══════════════════════════════ SETTINGS PAGE ══════════════════════════════ */
+    #page-settings { gap: 20px; }
+
+    .settings-section { margin-bottom: 10px; }
+    .settings-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      margin-bottom: 2px;
+      gap: 16px;
+      transition: background 0.15s;
+    }
+    .setting-row:first-of-type { border-radius: var(--radius) var(--radius) 0 0; }
+    .setting-row:last-of-type { border-radius: 0 0 var(--radius) var(--radius); margin-bottom: 0; }
+    .setting-row:only-child { border-radius: var(--radius); }
+    .setting-row:hover { background: var(--surface2); }
+
+    .setting-label { font-size: 14px; font-weight: 500; }
+    .setting-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* Toggle switch */
+    .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 99px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+      pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(20px); }
+
+    .setting-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      width: 100px;
+      text-align: right;
+      transition: border-color 0.15s;
+    }
+    .setting-input:focus { border-color: var(--accent); }
+
+    .danger-zone {
+      background: var(--surface);
+      border: 1px solid rgba(231,76,60,0.2);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .danger-zone h3 { font-size: 14px; color: var(--red); margin-bottom: 8px; }
+    .danger-zone p { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .danger-btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--red);
+      color: var(--red);
+      background: transparent;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .danger-btn:hover { background: var(--red); color: #fff; }
+
+    /* ══════════════════════════════ PROFILE PAGE ══════════════════════════════ */
+    #page-profile { gap: 20px; }
+
+    .avatar {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      border: 2px solid var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 20px;
+      flex-shrink: 0;
+    }
+
+    .profile-field {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .profile-field:last-child { border-bottom: none; }
+    .profile-field-label { width: 80px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0; }
+    .profile-field-val { flex: 1; font-size: 14px; color: var(--text); font-weight: 500; }
+    .profile-field-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    .edit-btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ══════════════════════════════ TOAST ══════════════════════════════ */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 10px 20px;
+      border-radius: 99px;
+      font-size: 14px;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.success { border-color: var(--green); color: var(--green); }
+    #toast.error   { border-color: var(--red);   color: var(--red); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ SIDEBAR ══════════════════ -->
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-icon">📍</span> MapMyLeads
+  </div>
+
+  <button class="new-btn" id="newScrapeBtn" onclick="startNewScrape()">
+    <span>＋</span> New Scrape
+  </button>
+
+  <div class="nav-section">
+    <button class="nav-btn active" data-page="home" onclick="nav('home', this)">
+      <span class="nav-icon">🏠</span> Home
+    </button>
+    <button class="nav-btn" data-page="history" onclick="nav('history', this)">
+      <span class="nav-icon">🕒</span> History
+    </button>
+    <button class="nav-btn" data-page="database" onclick="nav('database', this)">
+      <span class="nav-icon">📋</span> Database
+    </button>
+  </div>
+
+  <div class="sessions-list" id="sidebarSessions"></div>
+
+  <div class="sidebar-bottom">
+    <button class="nav-btn" data-page="settings" onclick="nav('settings', this)">
+      <span class="nav-icon">⚙️</span> Settings
+    </button>
+    <button class="nav-btn" data-page="profile" onclick="nav('profile', this)">
+      <span class="nav-icon">👤</span> Profile
+    </button>
+  </div>
+</aside>
+
+<!-- ══════════════════ MAIN CONTENT ══════════════════ -->
+<main class="main">
+
+  <!-- ── HOME ── -->
+  <section id="page-home" class="page active">
+    <div class="greeting">
+      <span id="greetWord">Good evening</span>,
+      <span id="greetName">there</span> 👋
+    </div>
+
+    <div class="stats-grid">
+      <div class="card">
+        <div class="card-title">Total Leads</div>
+        <div class="big-num" id="statTotal">—</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sentiment Breakdown</div>
+        <div id="sentimentBreakdown" style="margin-top:4px;">
+          <div style="color:var(--muted);font-size:13px;">Loading…</div>
+        </div>
+      </div>
+      <div class="card card-wide">
+        <div class="card-title">Lead Categories</div>
+        <div id="categoryBreakdown" style="margin-top:8px;">
+          <div style="color:var(--muted);font-size:13px;">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat input -->
+    <div class="chat-input-area">
+      <form class="chat-form" id="chatForm" onsubmit="handleChatSubmit(event)">
+        <input
+          type="text"
+          class="chat-input"
+          id="chatInput"
+          placeholder='e.g. Find 10 hair salons in Austin with rating above 4.2'
+          autocomplete="off"
+        >
+        <button type="submit" class="chat-send" title="Scrape">➤</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ── HISTORY ── -->
+  <section id="page-history" class="page">
+    <div class="page-header">
+      <h1>History</h1>
+      <p>All your past scraping sessions</p>
+    </div>
+    <div id="historyContent" style="flex:1;"></div>
+  </section>
+
+  <!-- ── DATABASE ── -->
+  <section id="page-database" class="page">
+    <div class="page-header">
+      <h1>Database</h1>
+      <p>All leads stored in Airtable</p>
+    </div>
+
+    <div class="db-toolbar">
+      <input type="text" class="db-search" id="dbSearch" placeholder="🔍  Search by name, city or category…" oninput="applyFilters()">
+      <button class="filter-btn" id="filterPositive" onclick="toggleSentimentFilter('Positive')">● Positive</button>
+      <button class="filter-btn" id="filterNeutral"  onclick="toggleSentimentFilter('Neutral')">● Neutral</button>
+      <button class="filter-btn" id="filterNegative" onclick="toggleSentimentFilter('Negative')">● Negative</button>
+      <span class="db-count" id="dbCount"></span>
+      <button class="refresh-btn" onclick="fetchLeads(true)">↻ Refresh</button>
+    </div>
+
+    <div class="table-wrap">
+      <table id="leadsTable">
+        <thead>
+          <tr>
+            <th onclick="sortBy('Name')"          id="th-Name">     Name</th>
+            <th onclick="sortBy('Category')"      id="th-Category"> Category</th>
+            <th onclick="sortBy('Address')"       id="th-Address">  Address</th>
+            <th onclick="sortBy('Rating')"        id="th-Rating">   Rating ↕</th>
+            <th onclick="sortBy('Reviews')"       id="th-Reviews">  Reviews ↕</th>
+            <th>Sentiment</th>
+            <th>Phone</th>
+            <th>Website</th>
+            <th>Stage</th>
+            <th>Follow-up</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTbody">
+          <tr><td colspan="11" class="empty-table">
+            <div class="empty-table-icon">📋</div>
+            <div>Loading leads…</div>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── SETTINGS ── -->
+  <section id="page-settings" class="page">
+    <div class="page-header">
+      <h1>Settings</h1>
+      <p>Customize your MapMyLeads experience</p>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Preferences</div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Auto-refresh Dashboard</div>
+          <div class="setting-desc">Refresh stats every 60 seconds automatically</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="settAutoRefresh" onchange="saveSetting('autoRefresh', this.checked)">
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Show Phone in Table</div>
+          <div class="setting-desc">Display phone number column in the Database table</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="settShowPhone" onchange="saveSetting('showPhone', this.checked); applyFilters()">
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Scraping Defaults</div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Default Max Results</div>
+          <div class="setting-desc">How many leads to fetch per scrape (1–50)</div>
+        </div>
+        <input type="number" class="setting-input" id="settMaxResults" min="1" max="50" value="20"
+          onchange="saveSetting('maxResults', this.value)">
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Default Min Rating</div>
+          <div class="setting-desc">Minimum rating filter applied if not specified in query</div>
+        </div>
+        <input type="number" class="setting-input" id="settMinRating" min="0" max="5" step="0.1" value="0"
+          onchange="saveSetting('minRating', this.value)">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Danger Zone</div>
+      <div class="danger-zone">
+        <h3>Clear All History</h3>
+        <p>This will permanently remove all chat sessions from your browser's local storage. Lead data in Airtable is not affected.</p>
+        <button class="danger-btn" onclick="clearAllHistory()">🗑️  Clear History</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PROFILE ── -->
+  <section id="page-profile" class="page">
+    <div class="page-header">
+      <h1>Profile</h1>
+      <p>Your account information</p>
+    </div>
+
+    <div class="card" style="max-width:480px;">
+      <div class="avatar" id="profileAvatar">M</div>
+
+      <div id="profileFields">
+        <div class="profile-field">
+          <span class="profile-field-label">Name</span>
+          <span class="profile-field-val" id="profileName">MapMyLeads User</span>
+          <button class="edit-btn" onclick="editProfileField('Name', 'profileName')">Edit</button>
+        </div>
+        <div class="profile-field">
+          <span class="profile-field-label">Email</span>
+          <span class="profile-field-val" id="profileEmail">admin@mapmyleads.app</span>
+          <button class="edit-btn" onclick="editProfileField('Email', 'profileEmail')">Edit</button>
+        </div>
+        <div class="profile-field">
+          <span class="profile-field-label">Phone</span>
+          <span class="profile-field-val" id="profilePhone">—</span>
+          <button class="edit-btn" onclick="editProfileField('Phone', 'profilePhone')">Edit</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── CHAT PANEL (slide-in) ── -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-panel-header">
+    <span class="session-emoji" id="chatPanelEmoji">💬</span>
+    <span class="chat-panel-title" id="chatPanelTitle">Session</span>
+    <button class="chat-panel-close" onclick="closeChatPanel()">✕</button>
+  </div>
+  <div class="chat-panel-body" id="chatPanelBody"></div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════ STATE ═══════════════════════ */
+const SESSIONS_KEY = 'mml_sessions';
+const SETTINGS_KEY = 'mml_settings';
+const PROFILE_KEY  = 'mml_profile';
+
+let allLeads       = [];   // raw Airtable records with {id, ...fields}
+let filteredLeads  = [];   // after search/sentiment filter
+let sortCol        = 'Rating';
+let sortDir        = 'desc';
+let activeSentiment = null; // 'Positive' | 'Neutral' | 'Negative' | null
+let autoRefreshTimer = null;
+let activePage     = 'home';
+
+/* ═══════════════════════ INIT ═══════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  loadProfile();
+  updateGreeting();
+  fetchStats();
+  fetchLeads(false);
+  renderSidebarSessions();
+});
+
+/* ═══════════════════════ NAVIGATION ═══════════════════════ */
+function nav(pageId, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById(`page-${pageId}`);
+  if (page) page.classList.add('active');
+
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) {
+    btn.classList.add('active');
+  } else {
+    const b = document.querySelector(`.nav-btn[data-page="${pageId}"]`);
+    if (b) b.classList.add('active');
+  }
+
+  activePage = pageId;
+
+  if (pageId === 'history')  renderHistoryPage();
+  if (pageId === 'database') fetchLeads(false);
+  if (pageId === 'settings') loadSettings();
+  if (pageId === 'profile')  loadProfile();
+}
+
+/* ═══════════════════════ GREETING ═══════════════════════ */
+function updateGreeting() {
+  const h = new Date().getHours();
+  let word = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('greetWord').textContent = word;
+
+  const profile = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+  const name = (profile.Name || '').split(' ')[0] || 'there';
+  document.getElementById('greetName').textContent = name;
+}
+
+/* ═══════════════════════ STATS (HOME) ═══════════════════════ */
+async function fetchStats() {
+  try {
+    const res  = await fetch('/api/stats');
+    const data = await res.json();
+    if (!data.success) return;
+
+    document.getElementById('statTotal').textContent = data.total_leads ?? '—';
+
+    const ORDER  = ['Positive','Neutral','Negative','Unknown'];
+    const COLORS = { Positive: 'var(--green)', Neutral: 'var(--amber)', Negative: 'var(--red)', Unknown: 'var(--grey)' };
+    const sb     = document.getElementById('sentimentBreakdown');
+    sb.innerHTML = ORDER.map(k => {
+      const v = data.sentiment_counts?.[k] ?? 0;
+      return `<div class="sentiment-row">
+        <span class="s-label"><span class="dot" style="background:${COLORS[k]}"></span>${k}</span>
+        <span class="s-count">${v}</span>
+      </div>`;
+    }).join('');
+
+    const cats  = data.category_counts ?? {};
+    const catEl = document.getElementById('categoryBreakdown');
+    const entries = Object.entries(cats).sort((a,b) => b[1]-a[1]);
+    if (!entries.length) { catEl.innerHTML = '<div style="color:var(--muted);font-size:13px;">No categories yet.</div>'; return; }
+    const max = Math.max(...entries.map(e=>e[1]), 1);
+    catEl.innerHTML = entries.map(([cat, cnt]) => {
+      const pct = (cnt / max * 100).toFixed(1);
+      return `<div class="bar-wrap">
+        <div class="bar-meta"><span>${cat}</span><span>${cnt}</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:0%" data-pct="${pct}"></div></div>
+      </div>`;
+    }).join('');
+
+    // Animate bars after render
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill').forEach(el => {
+        el.style.width = el.dataset.pct + '%';
+      });
+    });
+  } catch(e) {
+    console.error('Stats fetch error:', e);
+  }
+}
+
+/* ═══════════════════════ LEADS / DATABASE ═══════════════════════ */
+async function fetchLeads(showToast = false) {
+  try {
+    const res  = await fetch('/api/leads');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to fetch leads');
+
+    allLeads = data.leads.map(l => ({ _id: l.id, ...l.fields }));
+    applyFilters();
+
+    if (showToast) showToastMsg('Leads refreshed ✓', 'success');
+  } catch(e) {
+    console.error('Lead fetch error:', e);
+    if (showToast) showToastMsg('Failed to refresh leads', 'error');
+  }
+}
+
+function applyFilters() {
+  const term   = (document.getElementById('dbSearch')?.value || '').toLowerCase().trim();
+  const sett   = getSettings();
+
+  let results = allLeads.filter(l => {
+    // Sentiment filter
+    if (activeSentiment && l.Sentiment !== activeSentiment) return false;
+    // Text filter
+    if (term) {
+      const haystack = [l.Name, l.Address, l.Category].join(' ').toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  results = results.slice().sort((a, b) => {
+    let va = a[sortCol] ?? '';
+    let vb = b[sortCol] ?? '';
+    const numA = parseFloat(va), numB = parseFloat(vb);
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return sortDir === 'desc' ? numB - numA : numA - numB;
+    }
+    return sortDir === 'desc'
+      ? String(vb).localeCompare(String(va))
+      : String(va).localeCompare(String(vb));
+  });
+
+  filteredLeads = results;
+  renderLeadsTable(results, sett.showPhone);
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortDir = sortDir === 'desc' ? 'asc' : 'desc'; }
+  else { sortCol = col; sortDir = 'desc'; }
+
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sorted'));
+  const th = document.getElementById(`th-${col}`);
+  if (th) {
+    th.classList.add('sorted');
+    th.textContent = th.textContent.replace(/ [↑↓]$/,'') + (sortDir === 'desc' ? ' ↓' : ' ↑');
+  }
+  applyFilters();
+}
+
+function toggleSentimentFilter(sent) {
+  activeSentiment = activeSentiment === sent ? null : sent;
+  document.getElementById('filterPositive').className = 'filter-btn' + (activeSentiment === 'Positive' ? ' active-positive' : '');
+  document.getElementById('filterNeutral').className  = 'filter-btn' + (activeSentiment === 'Neutral'  ? ' active-neutral'  : '');
+  document.getElementById('filterNegative').className = 'filter-btn' + (activeSentiment === 'Negative' ? ' active-negative' : '');
+  applyFilters();
+}
+
+function renderLeadsTable(leads, showPhone) {
+  const tbody = document.getElementById('leadsTbody');
+  const countEl = document.getElementById('dbCount');
+
+  // Toggle phone column header visibility
+  const phoneTh = document.querySelector('#leadsTable thead tr th:nth-child(7)');
+  if (phoneTh) phoneTh.style.display = showPhone ? '' : 'none';
+
+  if (!leads.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty-table">
+      <div class="empty-table-icon">🔍</div>
+      <div>${allLeads.length ? 'No leads match your filters.' : 'No leads yet. Run a scrape to get started!'}</div>
+    </td></tr>`;
+    if (countEl) countEl.textContent = '0 leads';
+    return;
+  }
+
+  if (countEl) countEl.textContent = `${leads.length} lead${leads.length !== 1 ? 's' : ''}`;
+
+  const sentimentClass = s => s === 'Positive' ? 'b-green' : s === 'Neutral' ? 'b-amber' : s === 'Negative' ? 'b-red' : 'b-grey';
+  const stageClass     = s => s && s !== '-' ? 'b-blue' : 'b-grey';
+
+  tbody.innerHTML = leads.map(l => {
+    const sentiment = l.Sentiment || 'Unknown';
+    const phone     = l.Phone || '';
+    const website   = l.Website ? `<a href="${escHtml(l.Website)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">↗ Link</a>` : '—';
+    // NOTE: Airtable field name has a trailing space AND lowercase 'o': 'Reach out Stage '
+    const stage     = l['Reach out Stage '] || '—';
+    const followup  = l['Follow-up'] || '—';
+    const notes     = escHtml(l.Notes || '');
+    // Rating is stored as integer 1-5 in Airtable's rating field type
+    const rating    = l.Rating != null ? `${l.Rating}/5` : '—';
+    const reviews   = l.Reviews != null ? l.Reviews.toLocaleString() : '—';
+
+    return `<tr>
+      <td title="${escHtml(l.Name || '')}">${escHtml(l.Name || '—')}</td>
+      <td>${escHtml(l.Category || '—')}</td>
+      <td title="${escHtml(l.Address || '')}" style="max-width:180px;">${escHtml(l.Address || '—')}</td>
+      <td>⭐ ${rating}</td>
+      <td>${reviews}</td>
+      <td><span class="badge ${sentimentClass(sentiment)}">${sentiment}</span></td>
+      <td style="display:${showPhone ? '' : 'none'}">${escHtml(phone || '—')}</td>
+      <td>${website}</td>
+      <td><span class="badge ${stageClass(stage)}">${escHtml(stage)}</span></td>
+      <td><span class="badge b-grey">${escHtml(followup)}</span></td>
+      <td><input type="text" class="notes-input" value="${notes}" placeholder="Add note…"
+          onblur="saveNote('${l._id}', this.value)" onkeydown="if(event.key==='Enter')this.blur()"></td>
+    </tr>`;
+  }).join('');
+}
+
+async function saveNote(id, val) {
+  try {
+    const res = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ notes: val })
+    });
+    const data = await res.json();
+    if (data.success) showToastMsg('Note saved ✓', 'success');
+    else throw new Error(data.error);
+  } catch(e) {
+    showToastMsg('Failed to save note', 'error');
+  }
+}
+
+/* ═══════════════════════ CHAT / SCRAPE ═══════════════════════ */
+function handleChatSubmit(e) {
+  e.preventDefault();
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  input.blur();
+
+  const parsed = parseQuery(q);
+  const session = {
+    id: Date.now(),
+    title: q,
+    timestamp: new Date().toISOString(),
+    state: 'loading',
+    emoji: getEmoji(q),
+    leadCount: 0,
+    previewHtml: ''
+  };
+
+  saveSession(session);
+  nav('history');
+  openSession(session.id, true);
+  runScrape(session, parsed);
+}
+
+function parseQuery(rawQ) {
+  const sett = getSettings();
+  const q = rawQ.trim();
+
+  let location    = 'USA';
+  let max_results = parseInt(sett.maxResults) || 20;
+  let min_rating  = null;   // only apply if explicitly stated
+  let min_reviews = null;
+
+  // ── 1. Extract count: "find/top/get/show N" ───────────────────────────────
+  const cntMatch = q.match(/\b(?:find|top|get|show|search\s+for|look\s+for)\s+(\d+)\b/i);
+  if (cntMatch) max_results = parseInt(cntMatch[1]);
+
+  // ── 2. Extract rating threshold: "above 4.2", "rating > 4", "> 4.0", "rated 4+" ──
+  // Must be followed by a decimal/integer that looks like a rating (0-5)
+  const ratingMatch = q.match(/\b(?:rating\s*(?:above|>|of|:)?\s*|above\s*|rated\s*|>\s*)(\d(?:\.\d+)?)\b/i);
+  if (ratingMatch) {
+    const r = parseFloat(ratingMatch[1]);
+    if (r >= 0 && r <= 5) min_rating = r;
+  }
+
+  // ── 3. Extract review count: "200+ reviews", "min 100 reviews" ────────────
+  const reviewsMatch = q.match(/(?:min(?:imum)?\s+)?(\d+)\+?\s+reviews/i);
+  if (reviewsMatch) min_reviews = parseInt(reviewsMatch[1]);
+
+  // ── 4. Extract location after "in" ────────────────────────────────────────
+  // Captures city/region; stops at "with", "rated", "above", "rating", end-of-string
+  const inMatch = q.match(/\bin\s+([A-Za-z][A-Za-z\s,]{1,40}?)(?:\s+(?:with\b|rated\b|above\b|rating\b|min\b|having\b)|$)/i);
+  if (inMatch) location = inMatch[1].trim();
+
+  // ── 5. Build clean business-type query ───────────────────────────────────
+  // Start from original, progressively strip meta-instructions:
+  let query = q
+    // Remove leading action + count: "find 5", "top 10", "get me 3"
+    .replace(/^\s*(?:find|get\s+me|get|fetch|top|show\s+me|show|look\s+for|search\s+for|search)\s+\d+\s*/i, '')
+    // Remove trailing or inline count phrases: "10 of the best"
+    .replace(/\b\d+\s+(?:of\s+the\s+)?(?:best\s+)?/gi, '')
+    // Remove location clause: "in Miami", "in New York City"
+    .replace(/\bin\s+[A-Za-z][A-Za-z\s,]{1,40}?(?=\s+(?:with|rated|above|rating|min|having)|$)/gi, '')
+    // Remove rating clause: "with rating above 4.2", "above 4", "> 4.0", "rated 4+"
+    .replace(/\bwith\s+rating\s+(?:above|>\s*)[\d.]+/gi, '')
+    .replace(/\brating\s*(?:above|>|:)?\s*[\d.]+/gi, '')
+    .replace(/\babove\s+[\d.]+/gi, '')
+    .replace(/\brated\s+[\d.]+\+?/gi, '')
+    .replace(/>[\s]*[\d.]+/g, '')
+    // Remove review clause: "with 200+ reviews"
+    .replace(/\bwith\s+\d+\+?\s+reviews/gi, '')
+    .replace(/\b\d+\+?\s+reviews/gi, '')
+    // Remove leftover conjunctions
+    .replace(/\bwith\b/gi, '')
+    .replace(/\bhaving\b/gi, '')
+    // Collapse whitespace
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Fallback: if we nuked everything, use original
+  if (!query || query.length < 2) query = q;
+
+  return { query, location, max_results, min_rating, min_reviews };
+}
+
+async function runScrape(session, payload) {
+  const bodyEl = document.getElementById('chatPanelBody');
+  if (!bodyEl) return;
+
+  // Show loading with parsed-params so user can verify what was extracted
+  const paramsInfo = [
+    `Query: "${escHtml(payload.query)}"`,
+    `Location: ${escHtml(payload.location)}`,
+    `Max: ${payload.max_results}`,
+    payload.min_rating != null ? `Min rating: ${payload.min_rating}` : null,
+    payload.min_reviews != null ? `Min reviews: ${payload.min_reviews}` : null,
+  ].filter(Boolean).join(' · ');
+
+  document.getElementById('chatPanelBody').innerHTML = `
+    <div class="msg-user">${escHtml(session.title)}</div>
+    <div class="msg-bot" id="scrapeStatus">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">🔍 ${paramsInfo}</div>
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      &nbsp; Scraping Google Maps and saving to Airtable…
+    </div>`;
+
+  try {
+    const res  = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (data.success && data.leads && data.leads.length > 0) {
+      const leads     = data.leads;
+      const avgRating = (leads.reduce((s,l) => s + (parseFloat(l.Rating)||0), 0) / leads.length).toFixed(1);
+
+      let previewHtml = `<div class="preview-card">`;
+      leads.slice(0, 5).forEach(l => {
+        const sc = l.Sentiment === 'Positive' ? 'b-green' : l.Sentiment === 'Neutral' ? 'b-amber' : l.Sentiment === 'Negative' ? 'b-red' : 'b-grey';
+        previewHtml += `<div class="preview-item">
+          <div>
+            <div class="preview-name">${escHtml(l.Name)}</div>
+            <div class="preview-rating">⭐ ${l.Rating || 'N/A'} · ${escHtml(l.Address || '')}</div>
+          </div>
+          <span class="badge ${sc}">${l.Sentiment || 'Unknown'}</span>
+        </div>`;
+      });
+      if (leads.length > 5) previewHtml += `<div class="preview-item" style="justify-content:center;color:var(--muted);font-size:12px;">+${leads.length-5} more in Database</div>`;
+      previewHtml += `</div>`;
+
+      const msgHtml = `
+        <p>✅ <strong>${data.count}</strong> new lead${data.count !== 1 ? 's' : ''} scraped and saved to Airtable.</p>
+        <p style="color:var(--muted);font-size:12px;">Avg. rating: ⭐ ${avgRating} · ${paramsInfo}</p>
+        ${previewHtml}`;
+
+      session.state       = 'done';
+      session.leadCount   = data.count;
+      session.previewHtml = previewHtml;
+      saveSession(session);
+      renderChatPanelBody(session, msgHtml);
+      fetchStats();
+      if (activePage === 'database') fetchLeads(false);
+
+    } else if (data.success && data.count === 0) {
+      // Success but no leads — could be all duplicates or SerpApi returned nothing
+      const note = data.skipped_duplicates
+        ? `<br><span style="font-size:12px;color:var(--muted);">ℹ️ ${data.skipped_duplicates} result(s) were skipped as duplicates already in Airtable.</span>`
+        : '';
+      const msgHtml = `<p>⚠️ No new leads found for "${escHtml(payload.query)}" in ${escHtml(payload.location)}.</p>
+        ${note}
+        <p style="font-size:13px;color:var(--muted);margin-top:10px;">💡 Tips: Try a broader query, different city, or lower the rating filter.</p>
+        <p style="font-size:12px;color:var(--muted);">Searched: ${paramsInfo}</p>`;
+      session.state = 'done';
+      session.leadCount = 0;
+      saveSession(session);
+      renderChatPanelBody(session, msgHtml);
+
+    } else {
+      // API returned success:false
+      const errDetail = data.error || 'Unknown error from server.';
+      const msgHtml = `<p style="color:var(--red);">⚠️ Scrape failed.</p>
+        <p style="font-size:13px;color:var(--muted);">${escHtml(errDetail)}</p>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px;">Searched: ${paramsInfo}</p>`;
+      session.state = 'error';
+      session.leadCount = 0;
+      saveSession(session);
+      renderChatPanelBody(session, msgHtml);
+    }
+
+  } catch(e) {
+    console.error('Scrape fetch error:', e);
+    const msgHtml = `<p style="color:var(--red);">⚠️ Could not reach the server.</p>
+      <p style="font-size:13px;color:var(--muted);">Make sure the FastAPI server is running at port 3000.</p>
+      <p style="font-size:12px;color:var(--muted);">Error: ${escHtml(String(e))}</p>`;
+    session.state = 'error';
+    saveSession(session);
+    renderChatPanelBody(session, msgHtml);
+  }
+
+  renderSidebarSessions();
+}
+
+/* ═══════════════════════ CHAT PANEL ═══════════════════════ */
+function openSession(id, isNew = false) {
+  const sessions = getSessions();
+  const s = sessions.find(x => x.id === id);
+  if (!s) return;
+
+  document.getElementById('chatPanelEmoji').textContent = s.emoji || '💬';
+  document.getElementById('chatPanelTitle').textContent = s.title;
+  document.getElementById('chatPanel').classList.add('open');
+
+  if (isNew) {
+    // Show loading state
+    document.getElementById('chatPanelBody').innerHTML = `
+      <div class="msg-user">${escHtml(s.title)}</div>
+      <div class="msg-bot" id="scrapingMsg">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+        &nbsp; Scraping maps and saving to Airtable…
+      </div>`;
+  } else {
+    const botContent = s.leadCount > 0
+      ? `<p>✅ <strong>${s.leadCount}</strong> leads scraped and saved to Airtable.</p>${s.previewHtml || ''}`
+      : s.state === 'error'
+        ? `<p style="color:var(--red);">⚠️ This session encountered an error.</p>`
+        : `<p>No new leads were found for this query.</p>`;
+    renderChatPanelBody(s, botContent);
+  }
+
+  // Mark active in sidebar
+  document.querySelectorAll('.session-item').forEach(el => {
+    el.classList.toggle('active-session', parseInt(el.dataset.id) === id);
+  });
+}
+
+function renderChatPanelBody(session, botHtml) {
+  document.getElementById('chatPanelBody').innerHTML = `
+    <div class="msg-user">${escHtml(session.title)}</div>
+    <div class="msg-bot">${botHtml}</div>
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px;">${formatTime(session.timestamp)}</div>
+  `;
+}
+
+function closeChatPanel() {
+  document.getElementById('chatPanel').classList.remove('open');
+  document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active-session'));
+}
+
+/* ═══════════════════════ HISTORY PAGE ═══════════════════════ */
+function renderHistoryPage() {
+  const sessions  = getSessions();
+  const container = document.getElementById('historyContent');
+
+  if (!sessions.length) {
+    container.innerHTML = `<div class="history-empty">
+      <div class="history-empty-icon">🕒</div>
+      <div style="font-size:15px;font-weight:600;">No sessions yet</div>
+      <div style="font-size:13px;">Your scraping sessions will appear here.</div>
+    </div>`;
+    return;
+  }
+
+  // Group by date
+  const groups = { today: [], yesterday: [], earlier: [] };
+  const now    = new Date();
+  sessions.forEach(s => {
+    const d    = new Date(s.timestamp);
+    const diff = Math.floor((now - d) / 86400000);
+    if (diff === 0) groups.today.push(s);
+    else if (diff === 1) groups.yesterday.push(s);
+    else groups.earlier.push(s);
+  });
+
+  let html = '';
+  const renderGroup = (label, items) => {
+    if (!items.length) return '';
+    return `<div class="history-group">
+      <div class="history-group-label">${label}</div>
+      ${items.map(s => `
+        <div class="history-card" onclick="openSession(${s.id})" data-sid="${s.id}">
+          <div class="history-emoji">${s.emoji || '💬'}</div>
+          <div class="history-info">
+            <div class="history-title">${escHtml(s.title)}</div>
+            <div class="history-preview">${s.leadCount ? `Scraped ${s.leadCount} leads` : s.state === 'error' ? 'Error during scrape' : 'No leads found'}</div>
+            <div class="history-meta">${formatTime(s.timestamp)}</div>
+          </div>
+          <div class="history-badge">${s.leadCount || 0}</div>
+        </div>`).join('')}
+    </div>`;
+  };
+
+  html += renderGroup('Today', groups.today);
+  html += renderGroup('Yesterday', groups.yesterday);
+  html += renderGroup('Earlier', groups.earlier);
+
+  container.innerHTML = html;
+}
+
+/* ═══════════════════════ SESSIONS (localStorage) ═══════════════════════ */
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveSession(s) {
+  let sessions = getSessions();
+  const idx = sessions.findIndex(x => x.id === s.id);
+  if (idx > -1) sessions[idx] = s;
+  else sessions.unshift(s);
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  renderSidebarSessions();
+  if (activePage === 'history') renderHistoryPage();
+}
+
+function renderSidebarSessions() {
+  const sessions = getSessions();
+  const el = document.getElementById('sidebarSessions');
+  if (!sessions.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = sessions.slice(0, 20).map(s => `
+    <div class="session-item" data-id="${s.id}" onclick="openSession(${s.id})">
+      <span class="session-emoji">${s.emoji || '💬'}</span>
+      ${escHtml(s.title.substring(0, 28))}${s.title.length > 28 ? '…' : ''}
+    </div>`).join('');
+}
+
+function getEmoji(q) {
+  q = q.toLowerCase();
+  if (q.includes('plumb'))  return '🔧';
+  if (q.includes('salon') || q.includes('hair') || q.includes('barber')) return '✂️';
+  if (q.includes('restaurant') || q.includes('food') || q.includes('cafe')) return '🍽️';
+  if (q.includes('dentist') || q.includes('doctor') || q.includes('clinic')) return '🏥';
+  if (q.includes('gym') || q.includes('fitness')) return '💪';
+  if (q.includes('lawyer') || q.includes('legal')) return '⚖️';
+  if (q.includes('hotel') || q.includes('motel')) return '🏨';
+  if (q.includes('car') || q.includes('auto') || q.includes('mechanic')) return '🚗';
+  if (q.includes('clean')) return '🧹';
+  if (q.includes('real estate') || q.includes('realtor')) return '🏠';
+  return '🔍';
+}
+
+/* ═══════════════════════ SETTINGS ═══════════════════════ */
+function getSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function loadSettings() {
+  const s = getSettings();
+
+  const autoRefresh = document.getElementById('settAutoRefresh');
+  const showPhone   = document.getElementById('settShowPhone');
+  const maxResults  = document.getElementById('settMaxResults');
+  const minRating   = document.getElementById('settMinRating');
+
+  if (autoRefresh) autoRefresh.checked = !!s.autoRefresh;
+  if (showPhone)   showPhone.checked   = !!s.showPhone;
+  if (maxResults)  maxResults.value    = s.maxResults || 20;
+  if (minRating)   minRating.value     = s.minRating  || 0;
+
+  // Setup auto-refresh if enabled
+  if (s.autoRefresh) startAutoRefresh();
+  else stopAutoRefresh();
+}
+
+function saveSetting(key, val) {
+  const s  = getSettings();
+  s[key]   = val;
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  showToastMsg('Setting saved ✓', 'success');
+
+  if (key === 'autoRefresh') {
+    if (val) startAutoRefresh(); else stopAutoRefresh();
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  autoRefreshTimer = setInterval(() => {
+    fetchStats();
+    if (activePage === 'database') fetchLeads(false);
+  }, 60000);
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+}
+
+function clearAllHistory() {
+  if (!confirm('Are you sure? This will remove all local session history. Airtable data is not affected.')) return;
+  localStorage.removeItem(SESSIONS_KEY);
+  renderSidebarSessions();
+  if (activePage === 'history') renderHistoryPage();
+  closeChatPanel();
+  showToastMsg('History cleared ✓', 'success');
+}
+
+/* ═══════════════════════ PROFILE ═══════════════════════ */
+function loadProfile() {
+  const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+  const name  = p.Name  || 'MapMyLeads User';
+  const email = p.Email || 'admin@mapmyleads.app';
+  const phone = p.Phone || '—';
+
+  const nameEl  = document.getElementById('profileName');
+  const emailEl = document.getElementById('profileEmail');
+  const phoneEl = document.getElementById('profilePhone');
+  const avatar  = document.getElementById('profileAvatar');
+
+  if (nameEl)  nameEl.textContent  = name;
+  if (emailEl) emailEl.textContent = email;
+  if (phoneEl) phoneEl.textContent = phone;
+  if (avatar)  avatar.textContent  = name[0].toUpperCase();
+
+  // Sync greeting
+  document.getElementById('greetName').textContent = name.split(' ')[0];
+}
+
+function editProfileField(fieldKey, elemId) {
+  const span = document.getElementById(elemId);
+  if (!span) return;
+  const current = span.textContent === '—' ? '' : span.textContent;
+  const input = document.createElement('input');
+  input.type  = 'text';
+  input.value = current;
+  input.className = 'profile-field-input';
+  span.replaceWith(input);
+  input.focus();
+
+  const save = () => {
+    const val = input.value.trim() || '—';
+    const newSpan = document.createElement('span');
+    newSpan.className = 'profile-field-val';
+    newSpan.id = elemId;
+    newSpan.textContent = val;
+    input.replaceWith(newSpan);
+
+    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+    p[fieldKey] = val === '—' ? '' : val;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+
+    loadProfile();
+    showToastMsg('Profile updated ✓', 'success');
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = current; input.blur(); } });
+}
+
+/* ═══════════════════════ MISC HELPERS ═══════════════════════ */
+function startNewScrape() {
+  nav('home');
+  setTimeout(() => document.getElementById('chatInput').focus(), 150);
+}
+
+function escHtml(str) {
+  if (str == null || str === '') return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  } catch { return iso; }
+}
+
+let toastTimer = null;
+function showToastMsg(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 2800);
+}
+</script>
+</body>
+</html>
